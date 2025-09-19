@@ -19,7 +19,6 @@ Pioneer GUI is a cross-platform desktop application built with [Tauri](https://t
 
 ## Prerequisites
 
-
 - **Pioneer CLI installed and exported**
   - Download the latest Pioneer binaries and place them in one of the following directories **before** launching the GUI:
     - **Windows:** `%USERPROFILE%\Pioneer\bin`
@@ -28,7 +27,6 @@ Pioneer GUI is a cross-platform desktop application built with [Tauri](https://t
     - PowerShell: `setx PIONEER_BINARY "%USERPROFILE%\Pioneer\bin\pioneer.exe"`
     - Bash/Zsh: `export PIONEER_BINARY="$HOME/Pioneer/bin/pioneer"`
   - The GUI first checks the `PIONEER_BINARY` and `PIONEER_PATH` environment variables, then falls back to looking for `pioneer`, `Pioneer`, or their `.exe` variants on `PATH`.
-
 - **Rust toolchain** – Latest stable toolchain for compiling the Tauri backend.
 - **Node.js 18+** – Used to build the Svelte frontend (any modern Node LTS release works).
 - **Package manager** – `npm`, `pnpm`, or `yarn`. Examples below use `npm`.

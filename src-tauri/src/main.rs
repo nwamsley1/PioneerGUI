@@ -364,9 +364,11 @@ async fn run_pioneer(
     let config_path = temp_dir.path().join(request.mode.config_filename());
     let config_str = serde_json::to_string_pretty(&request.config).map_err(|e| e.to_string())?;
     fs::write(&config_path, config_str).map_err(|e| e.to_string())?;
+
     let persisted_path = persist_config(&app_handle, request.mode, &request.config)?;
 
     let persisted_path_string = persisted_path.map(|p| p.to_string_lossy().to_string());
+
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))

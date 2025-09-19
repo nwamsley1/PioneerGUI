@@ -376,6 +376,7 @@
         {#if runError}
           <p class="status error">{runError}</p>
         {/if}
+
         {#if currentState?.persistedPath}
           <p class="status info">Stored defaults: {currentState.persistedPath}</p>
         {/if}
