@@ -11,17 +11,24 @@ Pioneer GUI is a cross-platform desktop application built with [Tauri](https://t
 - **Runtime parameter discovery** – Generates default parameter structures by calling the installed Pioneer CLI; automatically falls back to the repository templates if the binary is missing or returns an error.
 - **Configurable editors** – Presents the entire JSON structure with grouped sections and inline editing for numbers, booleans, strings, and primitive arrays. Important/simplified parameters are highlighted using Pioneer’s curated “simplified” configs.
 - **Per-workflow tabs** – Separate views for `BuildSpecLib` and `SearchDIA`, each with its own load/save/reset controls and execution button.
+- **Per-tab persistence** – Automatically saves each workflow’s parameters to `buildspeclib.json` and `searchdia.json` under the Pioneer GUI config directory so the editors reopen with your latest values.
 - **External terminal integration** – Launches Pioneer in a dedicated system terminal (PowerShell/Terminal/xterm depending on the OS) while streaming recent log lines and stage updates back into the GUI.
 - **Progress monitoring** – Parses Pioneer stdout/stderr for high-level stage hints (parameter tuning, first search, quant search, etc.) and displays a concise progress bar and status history.
 - **JSON interoperability** – Load an existing configuration file into either workflow, make adjustments, and save it back out. All file operations use the native OS dialog.
-
 ---
 
 ## Prerequisites
 
-- **Pioneer CLI installed and on `PATH`**
-  - Install Pioneer following the upstream instructions and verify that running `Pioneer --help` from a shell works.
-  - The GUI discovers the binary by name (`Pioneer`/`Pioneer.exe`). If it isn’t on `PATH`, add the directory to your environment variables before launching the GUI.
+
+- **Pioneer CLI installed and exported**
+  - Download the latest Pioneer binaries and place them in one of the following directories **before** launching the GUI:
+    - **Windows:** `%USERPROFILE%\Pioneer\bin`
+    - **macOS / Linux:** `~/Pioneer/bin`
+  - Add this directory to your `PATH` (or update your shell profile) so that running `pioneer --help` succeeds, and optionally expose the binary explicitly:
+    - PowerShell: `setx PIONEER_BINARY "%USERPROFILE%\Pioneer\bin\pioneer.exe"`
+    - Bash/Zsh: `export PIONEER_BINARY="$HOME/Pioneer/bin/pioneer"`
+  - The GUI first checks the `PIONEER_BINARY` and `PIONEER_PATH` environment variables, then falls back to looking for `pioneer`, `Pioneer`, or their `.exe` variants on `PATH`.
+
 - **Rust toolchain** – Latest stable toolchain for compiling the Tauri backend.
 - **Node.js 18+** – Used to build the Svelte frontend (any modern Node LTS release works).
 - **Package manager** – `npm`, `pnpm`, or `yarn`. Examples below use `npm`.
@@ -82,10 +89,20 @@ Optional but recommended:
 ## Pioneer Binary Expectations
 
 - Pioneer must be available on the command line *before* launching the GUI. On each startup the backend executes:
-  - `Pioneer params-predict <tmp_lib_dir> PreviewLibrary <tmp_fasta> --params-path <tmp_json>`
-  - `Pioneer params-search <tmp_library> <tmp_ms_dir> <tmp_results_dir> --params-path <tmp_json>`
+  - `pioneer params-predict <tmp_lib_dir> PreviewLibrary <tmp_fasta> --params-path <tmp_json>`
+  - `pioneer params-search <tmp_library> <tmp_ms_dir> <tmp_results_dir> --params-path <tmp_json>`
 - If these commands succeed, their JSON output populates the editor. If either command fails (missing executable, permission issues, etc.), the GUI logs the error, displays a warning banner, and falls back to the checked-in JSON templates from `assets/example_config` in the Pioneer repo.
-- When you press **Run BuildSpecLib** or **Run SearchDIA**, the backend writes your current parameters to a temporary JSON file and then launches `Pioneer predict` or `Pioneer search` respectively. Output is streamed to a timestamped log file that the GUI tails while also opening a native terminal window to display the full Pioneer session.
+- When you press **Run BuildSpecLib** or **Run SearchDIA**, the backend writes your current parameters to a temporary JSON file and then launches `pioneer predict` or `pioneer search` respectively. Output is streamed to a timestamped log file that the GUI tails while also opening a native terminal window to display the full Pioneer session.
+
+### Configuration persistence
+
+- The GUI maintains separate configuration files for each workflow (`buildspeclib.json` and `searchdia.json`).
+- These files live alongside the application configuration directory:
+  - **Windows:** `%APPDATA%/com.nwamsley.pioneergui/`
+  - **macOS:** `~/Library/Application Support/com.nwamsley.pioneergui/`
+  - **Linux:** `~/.config/com.nwamsley.pioneergui/`
+- On startup, Pioneer GUI deep merges the stored configs over the latest defaults so you always resume with your last-known parameters even if the binary is unavailable.
+- Each run persists the active tab’s configuration back to disk, keeping both the GUI and the CLI-ready JSON files in sync.
 
 ---
 
@@ -108,7 +125,7 @@ You can switch between tabs at any time; each tab maintains its own in-memory co
 
 | Issue | Suggested fix |
 |-------|----------------|
-| GUI banner shows *Defaults loaded from the Pioneer.jl repository fallbacks* | Confirm `Pioneer` is on `PATH` and rerun the app. The fallback remains fully editable but may not include the latest upstream changes. |
+| GUI banner shows *Defaults loaded from the Pioneer.jl repository fallbacks* | Confirm `pioneer` is on `PATH` and rerun the app. The fallback remains fully editable but may not include the latest upstream changes. |
 | No external terminal opens when running Pioneer | Ensure a compatible terminal emulator is installed. The GUI tries common commands (`powershell`, `x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`, `mate-terminal`, `xterm`). A warning message appears in the status panel if spawning the terminal failed; the run will still execute headlessly and logs stream inside the GUI. |
 | Pioneer exits immediately with a non-zero status | Check the *Recent Pioneer output* panel and the log file path displayed in the status panel. Adjust parameters and rerun. |
 | Loading JSON removes unspecified keys | The loader deep-merges your file onto the active defaults so optional keys remain populated. If keys are missing, verify the source file is valid JSON. |

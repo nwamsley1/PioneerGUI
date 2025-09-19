@@ -16,6 +16,7 @@
     },
     "bundle": {
       "active": true,
+      "identifier": "com.nwamsley.pioneergui",
       "targets": "all",
       "icon": []
     },
