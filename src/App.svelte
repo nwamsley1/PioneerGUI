@@ -92,18 +92,34 @@
     const buildImportant = computeImportant(response.build.simplified_config);
     const searchImportant = computeImportant(response.search.simplified_config);
 
+    const buildDefaults = clone(response.build.default_config);
+    const buildCurrent = clone(response.build.persisted_config ?? response.build.default_config);
+    const buildLastLoaded = response.build.persisted_config
+      ? response.build.persisted_path ?? undefined
+      : undefined;
+
+    const searchDefaults = clone(response.search.default_config);
+    const searchCurrent = clone(response.search.persisted_config ?? response.search.default_config);
+    const searchLastLoaded = response.search.persisted_config
+      ? response.search.persisted_path ?? undefined
+      : undefined;
+
     configStates = {
       buildSpecLib: {
-        defaults: clone(response.build.default_config),
-        current: clone(response.build.default_config),
+        defaults: buildDefaults,
+        current: buildCurrent,
         important: buildImportant,
-        source: response.source
+        source: response.source,
+        lastLoadedPath: buildLastLoaded,
+        persistedPath: response.build.persisted_path ?? undefined
       },
       searchDia: {
-        defaults: clone(response.search.default_config),
-        current: clone(response.search.default_config),
+        defaults: searchDefaults,
+        current: searchCurrent,
         important: searchImportant,
-        source: response.source
+        source: response.source,
+        lastLoadedPath: searchLastLoaded,
+        persistedPath: response.search.persisted_path ?? undefined
       }
     };
   }
@@ -239,6 +255,15 @@
         }
       });
       updateProgress({ logPath: payload.log_path, configPath: payload.config_path });
+      if (payload.persisted_path) {
+        const updatedState = configStates[mode];
+        if (updatedState) {
+          configStates = {
+            ...configStates,
+            [mode]: { ...updatedState, lastLoadedPath: payload.persisted_path, persistedPath: payload.persisted_path }
+          };
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       runError = message;
@@ -353,6 +378,10 @@
           <p class="status error">{runError}</p>
         {/if}
 
+        {#if currentState?.persistedPath}
+          <p class="status info">Stored defaults: {currentState.persistedPath}</p>
+        {/if}
+
         {#if logBuffer.length > 0}
           <div class="log-preview">
             <h4>Recent Pioneer output</h4>
@@ -407,6 +436,10 @@
 
   .status.success {
     color: #047857;
+  }
+
+  .status.info {
+    color: #0369a1;
   }
 
   .workspace {

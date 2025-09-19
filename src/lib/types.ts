@@ -3,6 +3,8 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export interface ConfigSet {
   default_config: JsonValue;
   simplified_config: JsonValue;
+  persisted_config?: JsonValue;
+  persisted_path?: string | null;
 }
 
 export type ConfigSource = 'binary' | 'partial' | 'fallback';
@@ -20,6 +22,7 @@ export interface RunStartedPayload {
   mode: RunMode;
   log_path: string;
   config_path: string;
+  persisted_path?: string | null;
 }
 
 export interface ProgressPayload {
@@ -48,4 +51,5 @@ export interface ConfigState {
   important: Set<string>;
   source: ConfigSource;
   lastLoadedPath?: string;
+  persistedPath?: string;
 }

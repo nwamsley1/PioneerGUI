@@ -11,6 +11,7 @@ Pioneer GUI is a cross-platform desktop application built with [Tauri](https://t
 - **Runtime parameter discovery** – Generates default parameter structures by calling the installed Pioneer CLI; automatically falls back to the repository templates if the binary is missing or returns an error.
 - **Configurable editors** – Presents the entire JSON structure with grouped sections and inline editing for numbers, booleans, strings, and primitive arrays. Important/simplified parameters are highlighted using Pioneer’s curated “simplified” configs.
 - **Per-workflow tabs** – Separate views for `BuildSpecLib` and `SearchDIA`, each with its own load/save/reset controls and execution button.
+- **Per-tab persistence** – Automatically saves each workflow’s parameters to `buildspeclib.json` and `searchdia.json` under the Pioneer GUI config directory so the editors reopen with your latest values.
 - **External terminal integration** – Launches Pioneer in a dedicated system terminal (PowerShell/Terminal/xterm depending on the OS) while streaming recent log lines and stage updates back into the GUI.
 - **Progress monitoring** – Parses Pioneer stdout/stderr for high-level stage hints (parameter tuning, first search, quant search, etc.) and displays a concise progress bar and status history.
 - **JSON interoperability** – Load an existing configuration file into either workflow, make adjustments, and save it back out. All file operations use the native OS dialog.
@@ -19,12 +20,14 @@ Pioneer GUI is a cross-platform desktop application built with [Tauri](https://t
 
 ## Prerequisites
 
-- **Pioneer CLI installed and on `PATH`**
+- **Pioneer CLI installed and exported**
   - Download the latest Pioneer binaries and place them in one of the following directories **before** launching the GUI:
     - **Windows:** `%USERPROFILE%\Pioneer\bin`
     - **macOS / Linux:** `~/Pioneer/bin`
-  - Add this directory to your `PATH` (or update your shell profile) so that running `pioneer --help` succeeds.
-  - The GUI resolves the command by looking for `pioneer`, `Pioneer`, or their `.exe` variants. Keeping the executable in the prescribed folder ensures a consistent, cross-platform setup.
+  - Add this directory to your `PATH` (or update your shell profile) so that running `pioneer --help` succeeds, and optionally expose the binary explicitly:
+    - PowerShell: `setx PIONEER_BINARY "%USERPROFILE%\Pioneer\bin\pioneer.exe"`
+    - Bash/Zsh: `export PIONEER_BINARY="$HOME/Pioneer/bin/pioneer"`
+  - The GUI first checks the `PIONEER_BINARY` and `PIONEER_PATH` environment variables, then falls back to looking for `pioneer`, `Pioneer`, or their `.exe` variants on `PATH`.
 - **Rust toolchain** – Latest stable toolchain for compiling the Tauri backend.
 - **Node.js 18+** – Used to build the Svelte frontend (any modern Node LTS release works).
 - **Package manager** – `npm`, `pnpm`, or `yarn`. Examples below use `npm`.
@@ -89,6 +92,16 @@ Optional but recommended:
   - `pioneer params-search <tmp_library> <tmp_ms_dir> <tmp_results_dir> --params-path <tmp_json>`
 - If these commands succeed, their JSON output populates the editor. If either command fails (missing executable, permission issues, etc.), the GUI logs the error, displays a warning banner, and falls back to the checked-in JSON templates from `assets/example_config` in the Pioneer repo.
 - When you press **Run BuildSpecLib** or **Run SearchDIA**, the backend writes your current parameters to a temporary JSON file and then launches `pioneer predict` or `pioneer search` respectively. Output is streamed to a timestamped log file that the GUI tails while also opening a native terminal window to display the full Pioneer session.
+
+### Configuration persistence
+
+- The GUI maintains separate configuration files for each workflow (`buildspeclib.json` and `searchdia.json`).
+- These files live alongside the application configuration directory:
+  - **Windows:** `%APPDATA%/com.nwamsley.pioneergui/`
+  - **macOS:** `~/Library/Application Support/com.nwamsley.pioneergui/`
+  - **Linux:** `~/.config/com.nwamsley.pioneergui/`
+- On startup, Pioneer GUI deep merges the stored configs over the latest defaults so you always resume with your last-known parameters even if the binary is unavailable.
+- Each run persists the active tab’s configuration back to disk, keeping both the GUI and the CLI-ready JSON files in sync.
 
 ---
 

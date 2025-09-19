@@ -2,13 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command as StdCommand, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::Window;
+use tauri::{AppHandle, PathResolver, Window};
 use tempfile::tempdir;
 use thiserror::Error;
 use which::which;
@@ -22,7 +23,7 @@ static FALLBACK_SEARCH_SIMPLIFIED: &str =
 #[derive(Debug, Error)]
 enum ConfigLoadError {
     #[error(
-        "Pioneer binary not found in PATH (tried `pioneer`, `Pioneer`, `pioneer.exe`, `Pioneer.exe`)"
+        "Pioneer binary not found. Set `PIONEER_BINARY`/`PIONEER_PATH` or add the executable to PATH (tried `pioneer`, `Pioneer`, `pioneer.exe`, `Pioneer.exe`)."
     )]
     MissingBinary,
     #[error("Failed to execute Pioneer: {0}")]
@@ -155,6 +156,8 @@ const SEARCH_STAGES: [StageInfo; 7] = [
 struct ConfigSet {
     default_config: Value,
     simplified_config: Value,
+    persisted_config: Option<Value>,
+    persisted_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -185,6 +188,7 @@ struct RunStartedPayload {
     mode: RunMode,
     log_path: String,
     config_path: String,
+    persisted_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -212,7 +216,7 @@ struct RunCompletePayload {
 }
 
 #[tauri::command]
-async fn load_configs() -> Result<LoadConfigsResponse, String> {
+async fn load_configs(app_handle: AppHandle) -> Result<LoadConfigsResponse, String> {
     let fallback_build: Value = serde_json::from_str(FALLBACK_BUILD).map_err(|e| e.to_string())?;
     let fallback_build_simplified: Value =
         serde_json::from_str(FALLBACK_BUILD_SIMPLIFIED).map_err(|e| e.to_string())?;
@@ -222,13 +226,13 @@ async fn load_configs() -> Result<LoadConfigsResponse, String> {
         serde_json::from_str(FALLBACK_SEARCH_SIMPLIFIED).map_err(|e| e.to_string())?;
 
     let mut errors = Vec::new();
-    let mut build_config = fallback_build.clone();
-    let mut search_config = fallback_search.clone();
+    let mut build_defaults = fallback_build.clone();
+    let mut search_defaults = fallback_search.clone();
     let mut source = ConfigSource::Fallback;
 
     match try_fetch_build_defaults() {
         Ok(value) => {
-            build_config = value;
+            build_defaults = value;
             source = ConfigSource::Partial;
         }
         Err(err) => errors.push(format!("BuildSpecLib defaults: {err}")),
@@ -236,7 +240,7 @@ async fn load_configs() -> Result<LoadConfigsResponse, String> {
 
     match try_fetch_search_defaults() {
         Ok(value) => {
-            search_config = value;
+            search_defaults = value;
             source = match source {
                 ConfigSource::Partial | ConfigSource::Binary => ConfigSource::Binary,
                 ConfigSource::Fallback => ConfigSource::Partial,
@@ -249,14 +253,25 @@ async fn load_configs() -> Result<LoadConfigsResponse, String> {
         source = ConfigSource::Fallback;
     }
 
+    let resolver = app_handle.path_resolver();
+    let build_path = config_storage_path(RunMode::BuildSpecLib, &resolver);
+    let search_path = config_storage_path(RunMode::SearchDia, &resolver);
+
+    let build_persisted = load_persisted_config(build_path.as_deref(), &build_defaults);
+    let search_persisted = load_persisted_config(search_path.as_deref(), &search_defaults);
+
     let response = LoadConfigsResponse {
         build: ConfigSet {
-            default_config: build_config,
+            default_config: build_defaults,
             simplified_config: fallback_build_simplified,
+            persisted_config: build_persisted,
+            persisted_path: build_path.map(|p| p.to_string_lossy().to_string()),
         },
         search: ConfigSet {
-            default_config: search_config,
+            default_config: search_defaults,
             simplified_config: fallback_search_simplified,
+            persisted_config: search_persisted,
+            persisted_path: search_path.map(|p| p.to_string_lossy().to_string()),
         },
         source,
         binary_error: if errors.is_empty() {
@@ -340,12 +355,20 @@ async fn save_config(path: String, config: Value) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn run_pioneer(window: Window, request: RunRequest) -> Result<RunStartedPayload, String> {
+async fn run_pioneer(
+    window: Window,
+    app_handle: AppHandle,
+    request: RunRequest,
+) -> Result<RunStartedPayload, String> {
     let pioneer_path = locate_pioneer_binary().map_err(|e| e.to_string())?;
     let temp_dir = tempdir().map_err(|e| e.to_string())?;
     let config_path = temp_dir.path().join(request.mode.config_filename());
     let config_str = serde_json::to_string_pretty(&request.config).map_err(|e| e.to_string())?;
     fs::write(&config_path, config_str).map_err(|e| e.to_string())?;
+
+    let persisted_path = persist_config(&app_handle, request.mode, &request.config)?;
+
+    let persisted_path_string = persisted_path.map(|p| p.to_string_lossy().to_string());
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -358,6 +381,7 @@ async fn run_pioneer(window: Window, request: RunRequest) -> Result<RunStartedPa
         mode: request.mode,
         log_path: log_path.to_string_lossy().to_string(),
         config_path: config_path.to_string_lossy().to_string(),
+        persisted_path: persisted_path_string.clone(),
     };
 
     window
@@ -379,6 +403,25 @@ async fn run_pioneer(window: Window, request: RunRequest) -> Result<RunStartedPa
     });
 
     Ok(payload)
+}
+
+fn persist_config(
+    app_handle: &AppHandle,
+    mode: RunMode,
+    config: &Value,
+) -> Result<Option<PathBuf>, String> {
+    let resolver = app_handle.path_resolver();
+    let Some(path) = config_storage_path(mode, &resolver) else {
+        return Ok(None);
+    };
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let pretty = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
+    fs::write(&path, pretty).map_err(|e| e.to_string())?;
+    Ok(Some(path))
 }
 
 fn run_process(
@@ -624,7 +667,72 @@ fn open_terminal_tail(log_path: &Path) -> Result<(), String> {
     Err("Unsupported platform".into())
 }
 
+fn config_storage_path(mode: RunMode, resolver: &PathResolver) -> Option<PathBuf> {
+    let mut path = resolver.app_config_dir()?;
+    let filename = match mode {
+        RunMode::BuildSpecLib => "buildspeclib.json",
+        RunMode::SearchDia => "searchdia.json",
+    };
+    path.push(filename);
+    Some(path)
+}
+
+fn load_persisted_config(path: Option<&Path>, defaults: &Value) -> Option<Value> {
+    let path = path?;
+    let contents = fs::read_to_string(path).ok()?;
+    let persisted: Value = serde_json::from_str(&contents).ok()?;
+    Some(deep_merge(defaults, &persisted))
+}
+
+fn deep_merge(base: &Value, override_val: &Value) -> Value {
+    match (base, override_val) {
+        (Value::Object(base_map), Value::Object(override_map)) => {
+            let mut merged = base_map.clone();
+            for (key, value) in override_map.iter() {
+                let next = if let Some(existing) = merged.get(key) {
+                    deep_merge(existing, value)
+                } else {
+                    value.clone()
+                };
+                merged.insert(key.clone(), next);
+            }
+            Value::Object(merged)
+        }
+        _ => override_val.clone(),
+    }
+}
+
+fn env_pioneer_candidates() -> Vec<PathBuf> {
+    const ENV_VARS: &[&str] = &["PIONEER_BINARY", "PIONEER_PATH", "PIONEER_EXE", "PIONEER"];
+
+    let mut results = Vec::new();
+    for key in ENV_VARS.iter() {
+        if let Some(raw) = env::var_os(key) {
+            if raw.is_empty() {
+                continue;
+            }
+            let path = PathBuf::from(&raw);
+            if path.is_file() {
+                results.push(path);
+            } else if path.is_dir() {
+                for candidate in ["pioneer", "Pioneer", "pioneer.exe", "Pioneer.exe"] {
+                    results.push(path.join(candidate));
+                }
+            } else {
+                results.push(path);
+            }
+        }
+    }
+    results
+}
+
 fn locate_pioneer_binary() -> Result<PathBuf, ConfigLoadError> {
+    for candidate in env_pioneer_candidates() {
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+
     const CANDIDATES: &[&str] = &["pioneer", "Pioneer", "pioneer.exe", "Pioneer.exe"];
     for candidate in CANDIDATES {
         if let Ok(path) = which(candidate) {
