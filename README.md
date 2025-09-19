@@ -15,7 +15,6 @@ Pioneer GUI is a cross-platform desktop application built with [Tauri](https://t
 - **External terminal integration** – Launches Pioneer in a dedicated system terminal (PowerShell/Terminal/xterm depending on the OS) while streaming recent log lines and stage updates back into the GUI.
 - **Progress monitoring** – Parses Pioneer stdout/stderr for high-level stage hints (parameter tuning, first search, quant search, etc.) and displays a concise progress bar and status history.
 - **JSON interoperability** – Load an existing configuration file into either workflow, make adjustments, and save it back out. All file operations use the native OS dialog.
-
 ---
 
 ## Prerequisites

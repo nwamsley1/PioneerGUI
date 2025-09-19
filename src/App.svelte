@@ -91,7 +91,6 @@
 
     const buildImportant = computeImportant(response.build.simplified_config);
     const searchImportant = computeImportant(response.search.simplified_config);
-
     const buildDefaults = clone(response.build.default_config);
     const buildCurrent = clone(response.build.persisted_config ?? response.build.default_config);
     const buildLastLoaded = response.build.persisted_config
@@ -381,7 +380,6 @@
         {#if currentState?.persistedPath}
           <p class="status info">Stored defaults: {currentState.persistedPath}</p>
         {/if}
-
         {#if logBuffer.length > 0}
           <div class="log-preview">
             <h4>Recent Pioneer output</h4>
@@ -437,11 +435,9 @@
   .status.success {
     color: #047857;
   }
-
   .status.info {
     color: #0369a1;
   }
-
   .workspace {
     display: grid;
     grid-template-columns: 2fr 1fr;

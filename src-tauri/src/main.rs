@@ -252,7 +252,6 @@ async fn load_configs(app_handle: AppHandle) -> Result<LoadConfigsResponse, Stri
     if matches!(source, ConfigSource::Partial) && errors.len() == 2 {
         source = ConfigSource::Fallback;
     }
-
     let resolver = app_handle.path_resolver();
     let build_path = config_storage_path(RunMode::BuildSpecLib, &resolver);
     let search_path = config_storage_path(RunMode::SearchDia, &resolver);
@@ -423,7 +422,6 @@ fn persist_config(
     fs::write(&path, pretty).map_err(|e| e.to_string())?;
     Ok(Some(path))
 }
-
 fn run_process(
     window: Window,
     pioneer: PathBuf,
@@ -741,7 +739,6 @@ fn locate_pioneer_binary() -> Result<PathBuf, ConfigLoadError> {
     }
     Err(ConfigLoadError::MissingBinary)
 }
-
 fn main() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
